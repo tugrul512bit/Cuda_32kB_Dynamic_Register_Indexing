@@ -1,6 +1,8 @@
 # Cuda_32kB_Dynamic_Register_Indexing
 Seamless access to all private registers of warp, from main thread of the warp.
 
+Each CUDA pipeline can only access 255 32-bit registers. ```WarpRegisterArray<size>``` let enables seamless access to 8160 registers from 32 lanes of warp, for only main thread (threadIdx.x=0). 
+
 ```C++
 
 __global__ void dynamicRegisterIndexing(int* result, int start, int stop)
