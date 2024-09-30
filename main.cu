@@ -8,34 +8,39 @@
 #include <device_functions.h>
 #include <iostream>
 #include <chrono>
-template<int ArraySize>
+template<typename Type, int ArraySize>
 struct WarpRegisterArray
 {
 private:
-    int mem[(1 + (ArraySize - 1) / 32)];
+    Type mem[(1 + (ArraySize - 1) / 32)];
     // main thread broadcasts index
-    __device__ int broadcastIndexFromMainThread(const unsigned int mask, int index)
+    inline
+    __device__ int broadcastIndexFromMainThread(const unsigned int mask, int i) const
     {
-        return __shfl_sync(mask, index, 0);
+        return __shfl_sync(mask, i, 0);
     }
-    // main thread broadcasts data (to set)
-    __device__ int broadcastDataFromMainThread(const unsigned int mask, int index, int data)
+
+    inline
+    __device__ Type broadcastDataFromMainThread(const unsigned int mask, Type val) const
     {
-        return __shfl_sync(mask, data, 0);
+        return __shfl_sync(mask, val, 0);
     }
+
     // main thread knows where the data has to come from
-    __device__ unsigned int gatherData(const unsigned int mask, int data, int row)
+    inline
+    __device__ unsigned int gatherData(const unsigned int mask, Type data, int row) const
     {
         return __shfl_sync(mask, data, row);
     }
 public:
-    __device__ unsigned int get(const int index)
+    inline
+    __device__ Type get(const int index) const
     {
         const int id = threadIdx.x;
         constexpr unsigned int mask = 0xffffffff;
         const int indexReceived = broadcastIndexFromMainThread(mask, index);
         const int rowReceived = indexReceived / (1 + (ArraySize - 1) / 32);
-        int result = 0;
+        Type result = 0;
         
         const int column = indexReceived % (1 + (ArraySize - 1) / 32);
         switch (column)
@@ -302,12 +307,14 @@ public:
         // main thread computes the right lane without need to receive
         return gatherData(mask, result, rowReceived);
     }
-    __device__ void set(const unsigned int data, const int index)
+
+    inline
+    __device__ void set(const Type data, const int index)
     {
         const int id = threadIdx.x;
         constexpr unsigned int mask = 0xffffffff;
         const int indexReceived = broadcastIndexFromMainThread(mask, index);
-        const int dataReceived = broadcastIndexFromMainThread(mask, data);
+        const Type dataReceived = broadcastDataFromMainThread(mask, data);
         const int rowReceived = indexReceived / (1 + (ArraySize - 1) / 32);
  
         
@@ -579,7 +586,8 @@ public:
 __launch_bounds__(32, 1)
 __global__ void dynamicRegisterIndexing(int* result, int start, int stop)
 {
-    WarpRegisterArray<800> arr;
+    WarpRegisterArray<short,4000> arr;
+    int totalSum = 0;
     for (int j = 0; j < 100; j++)
     {
         int sum = 0;
@@ -594,8 +602,10 @@ __global__ void dynamicRegisterIndexing(int* result, int start, int stop)
         }
 
         if (threadIdx.x == 0)
-            result[0] += sum;
+            totalSum += sum;
     }
+    if(threadIdx.x == 0)
+        result[0] = totalSum;
 }
 
 
